@@ -1,5 +1,6 @@
 # CTCLRC
-
+<br>[日本語](https://github.com/Kdroidwin/CTCLRC/blob/main/README-ja.md) </br>
+<br> </br>
 CTCLRC is a Windows desktop app that creates LRC lyric timing files from:
 
 - an audio file
