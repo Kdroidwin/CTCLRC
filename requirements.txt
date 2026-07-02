@@ -1,0 +1,8 @@
+PySide6==6.9.1
+torch==2.8.0
+torchcodec==0.7.0
+transformers>=4.34
+numpy==2.4.6
+av>=14.0.0
+pyinstaller==6.16.0
+git+https://github.com/MahmoudAshraf97/ctc-forced-aligner.git
