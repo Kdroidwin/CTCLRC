@@ -27,6 +27,40 @@ The generated `.lrc` file is saved in the same folder as the audio file.
 
 ---
 
+## System Requirements
+
+### Minimum Requirements
+These specifications are sufficient to run the application using CPU inference.
+
+| Component | Minimum |
+|----------|---------|
+| OS | Windows 10 (64-bit) |
+| CPU | Intel Core i5 (8th Gen) / AMD Ryzen 5 2600 or equivalent |
+| Memory | 8 GB RAM |
+| Storage | 2 GB available SSD space |
+| GPU | Not required |
+
+### Recommended Requirements
+For faster alignment and smoother operation.
+
+| Component | Recommended |
+|----------|-------------|
+| OS | Windows 10/11 (64-bit) |
+| CPU | Intel Core i5-12400 / AMD Ryzen 5 5600 or better |
+| Memory | 16 GB RAM |
+| Storage | NVMe SSD |
+| GPU | NVIDIA GPU with CUDA support (6 GB+ VRAM, e.g. GTX 1660 or RTX 3050+) |
+
+### Notes
+
+- CPU-only inference is fully supported.
+- When a CUDA-compatible NVIDIA GPU is available, alignment is significantly faster.
+- The first launch downloads the alignment model (approximately 1–2 GB depending on the model format) unless it is bundled with the application.
+- Longer audio files require proportionally more processing time.
+
+---
+
+
 ## Important Distribution Notes
 
 Builds should use the **single-file (One-File)** PyInstaller specification:
