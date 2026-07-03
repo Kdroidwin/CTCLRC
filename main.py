@@ -32,12 +32,14 @@ class App:
             return
 
         language = language_code(self.window.language_combo.currentText())
+        lead_in = float(self.window.lead_in_spin.value())
 
         self.window.clear_log()
         self.window.append_log("===== CTCLRC =====")
         self.window.append_log(f"Audio : {audio}")
         self.window.append_log(f"Lyrics: {lyrics}")
         self.window.append_log(f"Lang  : {language}")
+        self.window.append_log(f"Lead  : {lead_in:.2f}s")
         self.window.append_log("")
 
         try:
@@ -47,6 +49,7 @@ class App:
                 audio,
                 lyrics,
                 language=language,
+                lead_in=lead_in,
                 line_mode=self.window.line_checkbox.isChecked(),
                 word_mode=self.window.word_checkbox.isChecked(),
             )

@@ -21,7 +21,7 @@ SAMPLE_RATE = 16000
 DEFAULT_LANGUAGE = "jpn"
 CTC_ALIGNMENT_MODEL = "MahmoudAshraf/mms-300m-1130-forced-aligner"
 LOCAL_CTC_MODEL_DIR = "models/mms-300m-1130-forced-aligner"
-LRC_LEAD_IN_SEC = 0.35
+DEFAULT_LRC_LEAD_IN_SEC = 0.25
 CPU_THREADS = 2
 
 
@@ -155,25 +155,30 @@ def enforce_monotonic_times(line_result: list[dict], word_result: list[dict]) ->
         previous = start + 0.02
 
 
-def apply_lrc_lead_in(line_result: list[dict], word_result: list[dict]) -> None:
-    if LRC_LEAD_IN_SEC <= 0:
+def apply_lrc_lead_in(line_result: list[dict], word_result: list[dict], seconds: float) -> None:
+    if seconds <= 0:
         return
 
     for line, words in zip(line_result, word_result):
-        line["start"] = max(0.0, float(line["start"]) - LRC_LEAD_IN_SEC)
-        line["end"] = max(line["start"] + 0.05, float(line["end"]) - LRC_LEAD_IN_SEC)
+        line["start"] = max(0.0, float(line["start"]) - seconds)
+        line["end"] = max(line["start"] + 0.05, float(line["end"]) - seconds)
         words["start"] = line["start"]
         words["end"] = line["end"]
 
         for word in words.get("words", []):
-            word["start"] = max(0.0, float(word.get("start", 0.0)) - LRC_LEAD_IN_SEC)
+            word["start"] = max(0.0, float(word.get("start", 0.0)) - seconds)
             word["end"] = max(
                 word["start"] + 0.01,
-                float(word.get("end", word["start"])) - LRC_LEAD_IN_SEC,
+                float(word.get("end", word["start"])) - seconds,
             )
 
 
-def ctc_align_lyrics(audio: np.ndarray, lyrics: list[str], language: str) -> tuple[list[dict], list[dict]]:
+def ctc_align_lyrics(
+    audio: np.ndarray,
+    lyrics: list[str],
+    language: str,
+    lead_in: float,
+) -> tuple[list[dict], list[dict]]:
     try:
         from ctc_forced_aligner import (
             generate_emissions,
@@ -299,7 +304,7 @@ def ctc_align_lyrics(audio: np.ndarray, lyrics: list[str], language: str) -> tup
         )
 
     enforce_monotonic_times(line_result, word_result)
-    apply_lrc_lead_in(line_result, word_result)
+    apply_lrc_lead_in(line_result, word_result, lead_in)
     return line_result, word_result
 
 
@@ -331,6 +336,7 @@ def generate_lrc(
     lyric_file,
     model=None,
     language=DEFAULT_LANGUAGE,
+    lead_in=DEFAULT_LRC_LEAD_IN_SEC,
     line_mode=True,
     word_mode=False,
 ):
@@ -356,8 +362,8 @@ def generate_lrc(
     audio = decode_audio(str(audio_file))
 
     print("CTC forced alignment...")
-    line_result, word_result = ctc_align_lyrics(audio, lyrics, language)
-    print(f"LRC lead-in: -{LRC_LEAD_IN_SEC:.2f}s")
+    line_result, word_result = ctc_align_lyrics(audio, lyrics, language, lead_in)
+    print(f"LRC lead-in: -{lead_in:.2f}s")
 
     print_line_alignment(line_result)
     if word_mode:

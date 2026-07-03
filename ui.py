@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QComboBox,
     QCheckBox,
+    QDoubleSpinBox,
 )
 
 
@@ -68,6 +69,17 @@ class MainWindow(QWidget):
         self.language_combo.setCurrentText("Japanese (jpn)")
         language_layout.addWidget(self.language_combo)
         layout.addLayout(language_layout)
+
+        lead_layout = QHBoxLayout()
+        lead_layout.addWidget(QLabel("Lead-in seconds"))
+        self.lead_in_spin = QDoubleSpinBox()
+        self.lead_in_spin.setRange(0.0, 2.0)
+        self.lead_in_spin.setSingleStep(0.05)
+        self.lead_in_spin.setDecimals(2)
+        self.lead_in_spin.setValue(0.25)
+        self.lead_in_spin.setSuffix(" s")
+        lead_layout.addWidget(self.lead_in_spin)
+        layout.addLayout(lead_layout)
 
         self.line_checkbox = QCheckBox("Line LRC")
         self.line_checkbox.setChecked(True)
