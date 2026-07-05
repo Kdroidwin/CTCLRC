@@ -8,6 +8,7 @@ from PyInstaller.utils.hooks import collect_all
 datas = []
 binaries = []
 hiddenimports = []
+icon_path = "assets/ctclrc.ico" if os.name == "nt" else None
 
 
 for pkg in [
@@ -34,6 +35,11 @@ for pkg in [
 if os.path.isdir("models"):
     datas += [
         ("models", "models"),
+    ]
+
+if os.path.isdir("assets"):
+    datas += [
+        ("assets", "assets"),
     ]
 
 
@@ -66,4 +72,5 @@ exe = EXE(
     strip=False,
     upx=True,
     console=False,
+    icon=icon_path,
 )

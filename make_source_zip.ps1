@@ -25,6 +25,10 @@ foreach ($file in $files) {
     Copy-Item -LiteralPath (Join-Path $root $file) -Destination $staging
 }
 
+if (Test-Path -LiteralPath (Join-Path $root "assets")) {
+    Copy-Item -LiteralPath (Join-Path $root "assets") -Destination (Join-Path $staging "assets") -Recurse
+}
+
 if (Test-Path -LiteralPath $zip) {
     Remove-Item -LiteralPath $zip -Force
 }

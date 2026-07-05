@@ -21,7 +21,7 @@ SAMPLE_RATE = 16000
 DEFAULT_LANGUAGE = "jpn"
 CTC_ALIGNMENT_MODEL = "MahmoudAshraf/mms-300m-1130-forced-aligner"
 LOCAL_CTC_MODEL_DIR = "models/mms-300m-1130-forced-aligner"
-DEFAULT_LRC_LEAD_IN_SEC = 0.25
+DEFAULT_LRC_LEAD_IN_SEC = 0.345
 CPU_THREADS = 2
 
 
@@ -339,6 +339,7 @@ def generate_lrc(
     lead_in=DEFAULT_LRC_LEAD_IN_SEC,
     line_mode=True,
     word_mode=False,
+    progress_callback=None,
 ):
     print("=" * 60)
     print(APP_NAME)
@@ -352,18 +353,27 @@ def generate_lrc(
     if not lyric_file.exists():
         raise FileNotFoundError(lyric_file)
 
+    if progress_callback:
+        progress_callback(5)
+
     print("Load lyrics...")
     lyrics = load_lyrics(str(lyric_file))
     if not lyrics:
         raise ValueError("Lyrics file is empty.")
     print(f"{len(lyrics)} lyric lines")
+    if progress_callback:
+        progress_callback(15)
 
     print("Load audio...")
     audio = decode_audio(str(audio_file))
+    if progress_callback:
+        progress_callback(30)
 
     print("CTC forced alignment...")
     line_result, word_result = ctc_align_lyrics(audio, lyrics, language, lead_in)
     print(f"LRC lead-in: -{lead_in:.2f}s")
+    if progress_callback:
+        progress_callback(90)
 
     print_line_alignment(line_result)
     if word_mode:
@@ -376,6 +386,8 @@ def generate_lrc(
         line_mode=line_mode,
         word_mode=word_mode,
     )
+    if progress_callback:
+        progress_callback(100)
 
     print()
     print("Done.")
