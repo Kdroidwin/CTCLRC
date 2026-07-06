@@ -2,7 +2,7 @@
 
 [日本語版 README](README-ja.md)
 
-CTCLRC is a Windows desktop application that generates **LRC lyric timing files** from the following two inputs:
+CTCLRC is a Windows & Linux desktop application that generates **LRC lyric timing files** from the following two inputs:
 
 * An audio file
 * A complete and accurate lyrics `.txt` file
