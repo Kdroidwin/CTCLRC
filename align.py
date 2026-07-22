@@ -1,7 +1,9 @@
 import gc
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 os.environ.setdefault("OMP_NUM_THREADS", "2")
 os.environ.setdefault("MKL_NUM_THREADS", "2")
@@ -41,6 +43,14 @@ else:
     APP_DIR = BASE_DIR
 
 
+@dataclass(frozen=True)
+class AlignmentBundle:
+    model: Any
+    tokenizer: Any
+    dtype: Any
+    model_path: str
+
+
 def get_ctc_alignment_model_path() -> str:
     for base_dir in (APP_DIR, BASE_DIR):
         local_model = base_dir / LOCAL_CTC_MODEL_DIR
@@ -49,9 +59,84 @@ def get_ctc_alignment_model_path() -> str:
     return CTC_ALIGNMENT_MODEL
 
 
+def load_alignment_bundle() -> AlignmentBundle:
+    try:
+        from ctc_forced_aligner import load_alignment_model
+    except ImportError as exc:
+        raise RuntimeError(
+            "ctc-forced-aligner is not installed. Install it with requirements.txt first."
+        ) from exc
+
+    dtype = torch.float16 if DEVICE == "cuda" else torch.float32
+    model_path = get_ctc_alignment_model_path()
+    print(f"Loading CTC model: {model_path}")
+    print(f"Device: {DEVICE}")
+    model, tokenizer = load_alignment_model(
+        DEVICE,
+        model_path,
+        None,
+        dtype,
+    )
+    return AlignmentBundle(model=model, tokenizer=tokenizer, dtype=dtype, model_path=model_path)
+
+
 def load_lyrics(path: str) -> list[str]:
+    lines, _ = load_lyrics_with_sections(path)
+    return lines
+
+
+def load_lyrics_with_sections(path: str, keep_sections: bool = True) -> tuple[list[str], list[int]]:
     with open(path, "r", encoding="utf-8-sig") as f:
-        return [line.strip() for line in f.readlines() if line.strip()]
+        return parse_lyrics_text(f.read(), keep_sections=keep_sections)
+
+
+def load_lyrics_text(text: str, keep_sections: bool = True) -> tuple[list[str], list[int]]:
+    return parse_lyrics_text(text, keep_sections=keep_sections)
+
+
+def parse_lyrics_text(text: str, keep_sections: bool = True) -> tuple[list[str], list[int]]:
+    lines: list[str] = []
+    section_breaks: set[int] = set()
+    pending_section_break = False
+
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            if keep_sections and lines:
+                pending_section_break = True
+            continue
+
+        if keep_sections and pending_section_break and lines:
+            section_breaks.add(len(lines) - 1)
+            pending_section_break = False
+
+        lines.append(line)
+
+    return lines, sorted(section_breaks) if keep_sections else []
+
+
+def resolve_lyrics_source(
+    audio_file: str | Path,
+    lyric_file: str | Path | None = None,
+    lyric_text: str | None = None,
+    keep_sections: bool = True,
+) -> tuple[list[str], list[int]]:
+    if lyric_text is not None and lyric_text.strip():
+        return load_lyrics_text(lyric_text, keep_sections=keep_sections)
+
+    if lyric_file:
+        lyric_path = Path(lyric_file)
+        if lyric_path.exists():
+            return load_lyrics_with_sections(str(lyric_path), keep_sections=keep_sections)
+
+    audio_path = Path(audio_file)
+    candidate = audio_path.with_suffix(".txt")
+    if candidate.exists():
+        return load_lyrics_with_sections(str(candidate), keep_sections=keep_sections)
+
+    raise FileNotFoundError(
+        "Lyrics were not provided. Supply a lyrics file, paste lyrics text, or place a .txt file next to the audio."
+    )
 
 
 def decode_audio(audio_path: str) -> np.ndarray:
@@ -106,7 +191,7 @@ def normalize_text(text: str) -> str:
         "]",
         "【",
         "】",
-        "\"",
+        '"',
         "'",
         ":",
         ";",
@@ -178,13 +263,13 @@ def ctc_align_lyrics(
     lyrics: list[str],
     language: str,
     lead_in: float,
+    bundle: AlignmentBundle | None = None,
 ) -> tuple[list[dict], list[dict]]:
     try:
         from ctc_forced_aligner import (
             generate_emissions,
             get_alignments,
             get_spans,
-            load_alignment_model,
             postprocess_results,
             preprocess_text,
         )
@@ -193,29 +278,21 @@ def ctc_align_lyrics(
             "ctc-forced-aligner is not installed. Install it with requirements.txt first."
         ) from exc
 
-    dtype = torch.float16 if DEVICE == "cuda" else torch.float32
-    model_path = get_ctc_alignment_model_path()
+    owned_bundle = bundle is None
+    if bundle is None:
+        bundle = load_alignment_bundle()
 
     prepared_lines = [normalize_text(line) for line in lyrics]
     full_text = "".join(prepared_lines)
     if not full_text:
         raise ValueError("Lyrics contain no alignable text.")
 
-    print(f"Loading CTC model: {model_path}")
     print(f"Language: {language}")
-    print(f"Device: {DEVICE}")
-
-    model, tokenizer = load_alignment_model(
-        DEVICE,
-        model_path,
-        None,
-        dtype,
-    )
 
     try:
-        audio_waveform = torch.as_tensor(audio, dtype=dtype, device=DEVICE)
+        audio_waveform = torch.as_tensor(audio, dtype=bundle.dtype, device=DEVICE)
         emissions, stride = generate_emissions(
-            model,
+            bundle.model,
             audio_waveform,
             window_length=20,
             context_length=2,
@@ -233,7 +310,7 @@ def ctc_align_lyrics(
         segments, scores, blank_token = get_alignments(
             emissions,
             tokens_starred,
-            tokenizer,
+            bundle.tokenizer,
         )
         spans = get_spans(tokens_starred, segments, blank_token)
         char_results = postprocess_results(
@@ -244,10 +321,11 @@ def ctc_align_lyrics(
             merge_threshold=0.0,
         )
     finally:
-        del model
-        gc.collect()
-        if DEVICE == "cuda":
-            torch.cuda.empty_cache()
+        if owned_bundle:
+            del bundle
+            gc.collect()
+            if DEVICE == "cuda":
+                torch.cuda.empty_cache()
 
     line_result = []
     word_result = []
@@ -308,6 +386,15 @@ def ctc_align_lyrics(
     return line_result, word_result
 
 
+def annotate_section_breaks(lines: list[dict], break_after_indices: list[int] | None) -> None:
+    if not break_after_indices:
+        return
+    breaks = set(break_after_indices)
+    for index, item in enumerate(lines):
+        if index in breaks:
+            item["section_break_after"] = True
+
+
 def print_line_alignment(lines: list[dict]) -> None:
     print()
     print("=" * 60)
@@ -316,6 +403,8 @@ def print_line_alignment(lines: list[dict]) -> None:
 
     for item in lines:
         print(f"[{item['start']:.2f}] {item['lyric']}")
+        if item.get("section_break_after"):
+            print()
 
 
 def print_word_alignment(lines: list[dict]) -> None:
@@ -333,33 +422,32 @@ def print_word_alignment(lines: list[dict]) -> None:
 
 def generate_lrc(
     audio_file,
-    lyric_file,
+    lyric_file=None,
+    lyric_text=None,
     model=None,
     language=DEFAULT_LANGUAGE,
     lead_in=DEFAULT_LRC_LEAD_IN_SEC,
     line_mode=True,
     word_mode=False,
+    output_path=None,
     progress_callback=None,
+    keep_sections=True,
 ):
     print("=" * 60)
     print(APP_NAME)
     print("=" * 60)
 
     audio_file = Path(audio_file)
-    lyric_file = Path(lyric_file)
-
     if not audio_file.exists():
         raise FileNotFoundError(audio_file)
-    if not lyric_file.exists():
-        raise FileNotFoundError(lyric_file)
 
     if progress_callback:
         progress_callback(5)
 
     print("Load lyrics...")
-    lyrics = load_lyrics(str(lyric_file))
+    lyrics, section_breaks = resolve_lyrics_source(audio_file, lyric_file, lyric_text, keep_sections=keep_sections)
     if not lyrics:
-        raise ValueError("Lyrics file is empty.")
+        raise ValueError("Lyrics are empty.")
     print(f"{len(lyrics)} lyric lines")
     if progress_callback:
         progress_callback(15)
@@ -370,7 +458,10 @@ def generate_lrc(
         progress_callback(30)
 
     print("CTC forced alignment...")
-    line_result, word_result = ctc_align_lyrics(audio, lyrics, language, lead_in)
+    bundle = model if isinstance(model, AlignmentBundle) else None
+    line_result, word_result = ctc_align_lyrics(audio, lyrics, language, lead_in, bundle=bundle)
+    annotate_section_breaks(line_result, section_breaks)
+    annotate_section_breaks(word_result, section_breaks)
     print(f"LRC lead-in: -{lead_in:.2f}s")
     if progress_callback:
         progress_callback(90)
@@ -385,6 +476,7 @@ def generate_lrc(
         word_result,
         line_mode=line_mode,
         word_mode=word_mode,
+        output_path=output_path,
     )
     if progress_callback:
         progress_callback(100)
